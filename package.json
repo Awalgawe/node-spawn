@@ -1,0 +1,54 @@
+{
+  "name": "@awalgawe/spawn",
+  "version": "1.0.0",
+  "description": "A modern, promise-based wrapper around child_process.spawn with AbortSignal support and proper cleanup",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "node --test dist/spawn.test.js"
+  },
+  "keywords": [
+    "spawn",
+    "child_process",
+    "promise",
+    "async",
+    "process",
+    "command",
+    "exec",
+    "abort",
+    "signal",
+    "typescript"
+  ],
+  "author": "awalgawe",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/awalgawe/spawn.git"
+  },
+  "bugs": {
+    "url": "https://github.com/awalgawe/spawn/issues"
+  },
+  "homepage": "https://github.com/awalgawe/spawn#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  }
+}
