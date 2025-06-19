@@ -235,7 +235,7 @@ export default function spawn<T extends RunOptions>(
           ? `Process killed with signal: ${signal}`
           : `Process exited with code: ${code}`;
 
-        reject(new Error(message, { cause: { code, signal } }));
+        reject(new Error(message, { cause: result }));
       }
     }
 
