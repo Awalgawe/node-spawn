@@ -1,15 +1,16 @@
 # @awalgawe/spawn
 
-A modern, promise-based wrapper around `child_process.spawn` with AbortSignal support and proper cleanup.
+A simple promise wrapper for `child_process.spawn` that lets you process output streams while waiting for completion.
 
-## Features
+## Why?
 
-- ✅ **Promise-based**: No more callback hell
-- ✅ **AbortSignal support**: Standard cancellation API
-- ✅ **Proper cleanup**: No memory leaks
-- ✅ **TypeScript**: Full type safety
-- ✅ **Error details**: Access to exit codes and signals via `error.cause`
-- ✅ **Stream handling**: Optional stdout/stderr callbacks
+Sometimes you need to:
+- Process command output line by line as it comes
+- Wait for the command to finish before continuing
+- Cancel long-running commands
+- Handle errors properly
+
+This is a thin wrapper that makes these common patterns easier.
 
 ## Installation
 
@@ -19,105 +20,95 @@ npm install @awalgawe/spawn
 
 ## Usage
 
-### Basic usage
+### Process output as it comes
 
 ```typescript
 import spawn from '@awalgawe/spawn';
 
-const result = await spawn('ls', ['-la']);
-console.log('Exit code:', result.code);
-```
-
-### With output handling
-
-```typescript
-import spawn from '@awalgawe/spawn';
-
-await spawn('grep', ['pattern', 'file.txt'], {
-  onStdOut: (chunk) => console.log('Found:', chunk.toString()),
-  onStdErr: (chunk) => console.error('Error:', chunk.toString())
+await spawn('ping', ['-c', '5', 'google.com'], {
+  onStdOut: (chunk) => {
+    console.log('Ping:', chunk.toString().trim());
+  },
+  onStdErr: (chunk) => {
+    console.error('Error:', chunk.toString().trim());
+  }
 });
+console.log('Ping completed');
 ```
 
-### With cancellation (AbortSignal)
+### Handle errors with exit codes
 
 ```typescript
-import spawn from '@awalgawe/spawn';
+try {
+  await spawn('grep', ['pattern', 'nonexistent.txt']);
+} catch (err) {
+  const { code } = err.cause;
+  if (code === 1) {
+    console.log('No matches found');
+  } else if (code === 2) {
+    console.log('File not found or other error');
+  }
+}
+```
 
+### Cancel long-running commands
+
+```typescript
 const controller = new AbortController();
-setTimeout(() => controller.abort(), 5000); // 5s timeout
+setTimeout(() => controller.abort(), 5000);
 
 try {
-  await spawn('long-running-command', [], { 
-    signal: controller.signal 
+  await spawn('ping', ['google.com'], { 
+    signal: controller.signal,
+    onStdOut: (chunk) => console.log(chunk.toString())
   });
 } catch (err) {
-  if (err.message.includes('aborted')) {
-    console.log('Command was cancelled');
-  }
+  console.log('Command was cancelled or failed');
 }
 ```
 
-### Error handling with detailed info
+### Real-world example: Processing log files
 
 ```typescript
-import spawn from '@awalgawe/spawn';
+let lineBuffer = '';
+const errors = [];
 
-try {
-  await spawn('grep', ['pattern', 'file.txt']);
-} catch (err) {
-  const { code, signal } = err.cause;
-  
-  if (code === 1 && signal === null) {
-    console.log('No matches found (normal)');
-  } else if (code === 2) {
-    console.log('Grep error');
-  } else if (signal) {
-    console.log(`Process killed with signal: ${signal}`);
-  }
-}
+await spawn('tail', ['-f', 'app.log'], {
+  onStdOut: (chunk) => {
+    lineBuffer += chunk.toString();
+    const lines = lineBuffer.split('\n');
+    lineBuffer = lines.pop() || ''; // Keep incomplete line
+    
+    lines.forEach(line => {
+      if (line.includes('ERROR')) {
+        errors.push(line);
+        console.log('Found error:', line);
+      }
+    });
+  },
+  signal: someAbortSignal
+});
 ```
 
 ## API
 
 ### `spawn(command, args?, options?)`
 
-Executes a child process and returns a promise.
+Returns a promise that resolves when the process completes.
 
-#### Parameters
+- **`command`**: Command to execute
+- **`args`**: Command arguments (optional)
+- **`options`**: 
+  - `onStdOut(chunk, abort)`: Process stdout data as it arrives
+  - `onStdErr(chunk, abort)`: Process stderr data as it arrives  
+  - `signal`: AbortSignal to cancel the command
 
-- **`command`** (string): The command to execute
-- **`args`** (string[], optional): Arguments to pass to the command
-- **`options`** (RunOptions, optional): Configuration options
+Resolves to `{ code, signal }` or rejects with error details in `error.cause`.
 
-#### Options
+## Note on chunks vs lines
 
-- **`onStdOut`** (function, optional): Callback for stdout data
-  - `(chunk: Buffer, abort: () => void) => void`
-- **`onStdErr`** (function, optional): Callback for stderr data
-  - `(chunk: Buffer, abort: () => void) => void`
-- **`signal`** (AbortSignal, optional): Signal to cancel the operation
-
-#### Returns
-
-Promise that resolves to `RunResult`:
-- **`code`** (number | null): Exit code of the process
-- **`signal`** (string | null): Signal that terminated the process
-
-#### Error handling
-
-The promise rejects if:
-- Process exits with non-zero code
-- Process is terminated by a signal
-- An error occurs during execution
-- Operation is aborted via AbortSignal
-
-Rejected errors include a `cause` property with `{ code, signal }` for detailed analysis.
-
-## Requirements
-
-- Node.js ≥ 16.0.0 (for AbortSignal support)
+The `onStdOut` callback receives raw data chunks, which may not align with lines. If you need line-by-line processing, you'll need to buffer and split the data yourself (see example above).
 
 ## License
 
-MIT © awalgawe
+MIT
