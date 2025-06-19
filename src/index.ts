@@ -26,9 +26,9 @@ export interface RunOptions {
 }
 
 /**
- * Result of a child process execution.
+ * Base result interface
  */
-export interface RunResult {
+interface BaseRunResult {
   /**
    * Exit code of the child process. null if the process was terminated by a signal.
    */
@@ -39,6 +39,33 @@ export interface RunResult {
    */
   signal: NodeJS.Signals | null;
 }
+
+/**
+ * Result with stdout and stderr data
+ */
+export interface RunResultWithOutput extends BaseRunResult {
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Result with stdout data only
+ */
+export interface RunResultWithStdout extends BaseRunResult {
+  stdout: string;
+}
+
+/**
+ * Result with stderr data only
+ */
+export interface RunResultWithStderr extends BaseRunResult {
+  stderr: string;
+}
+
+/**
+ * Result with no output data
+ */
+export interface RunResultWithoutOutput extends BaseRunResult {}
 
 /**
  * Executes a child process and returns a promise that resolves with the process result.
@@ -58,11 +85,12 @@ export interface RunResult {
  *
  * @example
  * ```typescript
- * // Basic usage
+ * // Basic usage - get output in result
  * const result = await spawn('ls', ['-la']);
+ * console.log('Files:', result.stdout);
  * console.log('Exit code:', result.code);
  *
- * // With output handling
+ * // With real-time output handling
  * await spawn('grep', ['pattern', 'file.txt'], {
  *   onStdOut: (chunk) => console.log('Found:', chunk.toString())
  * });
@@ -82,12 +110,56 @@ export interface RunResult {
  * }
  * ```
  */
+
+// Function overloads for precise typing
 export default function spawn(
   command: string,
+  args?: string[]
+): Promise<RunResultWithOutput>;
+
+export default function spawn(
+  command: string,
+  args: string[],
+  options: {
+    onStdOut: (chunk: Buffer, abort: () => void) => void;
+    onStdErr: (chunk: Buffer, abort: () => void) => void;
+    signal?: AbortSignal;
+  }
+): Promise<RunResultWithoutOutput>;
+
+export default function spawn(
+  command: string,
+  args: string[],
+  options: {
+    onStdOut: (chunk: Buffer, abort: () => void) => void;
+    onStdErr?: undefined;
+    signal?: AbortSignal;
+  }
+): Promise<RunResultWithStderr>;
+
+export default function spawn(
+  command: string,
+  args: string[],
+  options: {
+    onStdOut?: undefined;
+    onStdErr: (chunk: Buffer, abort: () => void) => void;
+    signal?: AbortSignal;
+  }
+): Promise<RunResultWithStdout>;
+
+export default function spawn(
+  command: string,
+  args: string[],
+  options: { onStdOut?: undefined; onStdErr?: undefined; signal?: AbortSignal }
+): Promise<RunResultWithOutput>;
+
+export default function spawn<T extends RunOptions>(
+  command: string,
   args: string[] = [],
-  { onStdOut, onStdErr, signal }: RunOptions = {}
-) {
-  return new Promise<RunResult>((resolve, reject) => {
+  options: T = {} as T
+): Promise<BaseRunResult> {
+  const { onStdOut, onStdErr, signal } = options;
+  return new Promise<BaseRunResult>((resolve, reject) => {
     // Check if already aborted
     if (signal?.aborted) {
       reject(
@@ -104,16 +176,25 @@ export default function spawn(
 
     const abort = () => child.kill("SIGABRT");
 
+    // Collect output if no callbacks provided
+    let stdoutData = "";
+    let stderrData = "";
+
     // Store callback references for proper cleanup
     const stdoutHandler = onStdOut
       ? (chunk: Buffer) => onStdOut(chunk, abort)
-      : undefined;
+      : (chunk: Buffer) => {
+          stdoutData += chunk.toString();
+        };
+
     const stderrHandler = onStdErr
       ? (chunk: Buffer) => onStdErr(chunk, abort)
-      : undefined;
+      : (chunk: Buffer) => {
+          stderrData += chunk.toString();
+        };
 
-    if (stdoutHandler) child.stdout.on("data", stdoutHandler);
-    if (stderrHandler) child.stderr.on("data", stderrHandler);
+    child.stdout.on("data", stdoutHandler);
+    child.stderr.on("data", stderrHandler);
 
     // Handle abort signal
     const abortHandler = () => {
@@ -130,8 +211,8 @@ export default function spawn(
     }
 
     function cleanup() {
-      if (stdoutHandler) child.stdout.off("data", stdoutHandler);
-      if (stderrHandler) child.stderr.off("data", stderrHandler);
+      child.stdout.off("data", stdoutHandler);
+      child.stderr.off("data", stderrHandler);
       if (signal) signal.removeEventListener("abort", abortHandler);
       child.off("close", onClose);
       child.off("error", onError);
@@ -140,8 +221,15 @@ export default function spawn(
     function onClose(code: number | null, signal: NodeJS.Signals | null) {
       cleanup();
 
+      const result = {
+        code,
+        signal,
+        ...(onStdOut ? {} : { stdout: stdoutData }),
+        ...(onStdErr ? {} : { stderr: stderrData }),
+      } as any;
+
       if (code === 0 && signal === null) {
-        resolve({ code, signal });
+        resolve(result);
       } else {
         const message = signal
           ? `Process killed with signal: ${signal}`
