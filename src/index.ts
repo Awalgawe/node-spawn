@@ -44,22 +44,22 @@ interface BaseRunResult {
  * Result with stdout and stderr data
  */
 export interface RunResultWithOutput extends BaseRunResult {
-  stdout: string;
-  stderr: string;
+  stdout: Buffer;
+  stderr: Buffer;
 }
 
 /**
  * Result with stdout data only
  */
 export interface RunResultWithStdout extends BaseRunResult {
-  stdout: string;
+  stdout: Buffer;
 }
 
 /**
  * Result with stderr data only
  */
 export interface RunResultWithStderr extends BaseRunResult {
-  stderr: string;
+  stderr: Buffer;
 }
 
 /**
@@ -87,7 +87,7 @@ export interface RunResultWithoutOutput extends BaseRunResult {}
  * ```typescript
  * // Basic usage - get output in result
  * const result = await spawn('ls', ['-la']);
- * console.log('Files:', result.stdout);
+ * console.log('Files:', result.stdout.toString());
  * console.log('Exit code:', result.code);
  *
  * // With real-time output handling
@@ -177,20 +177,20 @@ export default function spawn<T extends RunOptions>(
     const abort = () => child.kill("SIGABRT");
 
     // Collect output if no callbacks provided
-    let stdoutData = "";
-    let stderrData = "";
+    let stdoutData = Buffer.alloc(0);
+    let stderrData = Buffer.alloc(0);
 
     // Store callback references for proper cleanup
     const stdoutHandler = onStdOut
       ? (chunk: Buffer) => onStdOut(chunk, abort)
       : (chunk: Buffer) => {
-          stdoutData += chunk.toString();
+          stdoutData = Buffer.concat([stdoutData, chunk]);
         };
 
     const stderrHandler = onStdErr
       ? (chunk: Buffer) => onStdErr(chunk, abort)
       : (chunk: Buffer) => {
-          stderrData += chunk.toString();
+          stderrData = Buffer.concat([stderrData, chunk]);
         };
 
     child.stdout.on("data", stdoutHandler);

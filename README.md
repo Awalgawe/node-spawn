@@ -26,32 +26,42 @@ npm install @awalgawe/spawn
 ```typescript
 import spawn from "@awalgawe/spawn";
 
-// Output is automatically collected when no callbacks are provided
-const result = await spawn("ls", ["-la"]);
-console.log("Files:", result.stdout);
-console.log("Errors:", result.stderr);
-console.log("Exit code:", result.code);
+const { stdout } = await spawn("ls", ["-la"]);
+console.log("Files:", stdout.toString());
 ```
-
-**Important**: If the command fails (non-zero exit code), the promise rejects and collected output is lost. Use callbacks if you need to process output even on failure.
 
 ### Handle errors and still get output
 
 ```typescript
 try {
-  const result = await spawn("grep", ["pattern", "nonexistent.txt"]);
-  console.log(result.stdout);
+  const { code, signal, stdout, stderr } = await spawn("grep", [
+    "pattern",
+    "nonexistent.txt",
+  ]);
+  // ...
 } catch (err) {
-  // Output is lost when the command fails!
+  const { code, signal, stdout, stderr } = err.cause;
   console.log("Command failed:", err.message);
+  console.log("Stdout:", stdout.toString());
+  console.log("Stderr:", stderr.toString());
+}
 
-  // Use callbacks instead to get output even on failure:
-  await spawn("grep", ["pattern", "nonexistent.txt"], {
-    onStdOut: (chunk, abort) => console.log("Found:", chunk.toString()),
-    onStdErr: (chunk, abort) => console.log("Error:", chunk.toString()),
-  }).catch(() => {
-    // Callbacks were called even though command failed
+try {
+  let processedStdout = "";
+  let processedStderr = "";
+
+  const { code, signal } = await spawn("grep", ["pattern", "nonexistent.txt"], {
+    onStdOut: (chunk, abort) => {
+      // Process output as it comes
+      processedStdout += doSomething(chunk);
+    },
+    onStdErr: (chunk, abort) => {
+      processedStderr += doSomethingElse(chunk);
+    },
   });
+} catch (err) {
+  const { code, signal } = err.cause;
+  // ...
 }
 ```
 
@@ -139,17 +149,17 @@ The return type changes based on which callbacks you provide:
 ```typescript
 // No callbacks → includes stdout and stderr
 const result1 = await spawn("ls");
-result1.stdout; // ✅ string
-result1.stderr; // ✅ string
+result1.stdout; // ✅ Buffer
+result1.stderr; // ✅ Buffer
 
 // With onStdOut → no stdout property
 const result2 = await spawn("ls", [], { onStdOut: (chunk, abort) => {} });
 result2.stdout; // ❌ TypeScript error
-result2.stderr; // ✅ string
+result2.stderr; // ✅ Buffer
 
 // With onStdErr → no stderr property
 const result3 = await spawn("ls", [], { onStdErr: (chunk, abort) => {} });
-result3.stdout; // ✅ string
+result3.stdout; // ✅ Buffer
 result3.stderr; // ❌ TypeScript error
 
 // With both callbacks → no output properties
@@ -176,18 +186,12 @@ Returns a promise that resolves when the process completes.
 
 **Return type varies based on callbacks:**
 
-- No callbacks: `{ code, signal, stdout, stderr }`
-- With onStdOut: `{ code, signal, stderr }`
-- With onStdErr: `{ code, signal, stdout }`
+- No callbacks: `{ code, signal, stdout: Buffer, stderr: Buffer }`
+- With onStdOut: `{ code, signal, stderr: Buffer }`
+- With onStdErr: `{ code, signal, stdout: Buffer }`
 - With both: `{ code, signal }`
 
-Rejects with error details in `error.cause`.
-
-## Note on chunks vs lines
-
-The `onStdOut` and `onStdErr` callbacks receive raw data chunks, which may not align with lines. If you need line-by-line processing, you'll need to buffer and split the data yourself (see example above).
-
-Both callbacks also receive an `abort` function as the second parameter, which can be called to immediately terminate the child process with `SIGABRT`.
+Rejects with error details in `error.cause` which includes `{ code, signal, stdout?: Buffer, stderr?: Buffer }`.
 
 ## License
 
