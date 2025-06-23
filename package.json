@@ -37,16 +37,16 @@
     "signal",
     "typescript"
   ],
-  "author": "awalgawe",
+  "author": "Awalgawe",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/awalgawe/spawn.git"
+    "url": "git+https://github.com/Awalgawe/node-spawn.git"
   },
   "bugs": {
-    "url": "https://github.com/awalgawe/spawn/issues"
+    "url": "https://github.com/Awalgawe/node-spawn/issues"
   },
-  "homepage": "https://github.com/awalgawe/spawn#readme",
+  "homepage": "https://github.com/Awalgawe/node-spawn#readme",
   "engines": {
     "node": ">=16.9.0"
   },
